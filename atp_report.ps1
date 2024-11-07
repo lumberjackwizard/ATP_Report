@@ -313,14 +313,15 @@ function Generate_IDS_Profile_Report {
 	foreach ($idsprofile in $allIdsProfiles) {
     # Ensure that lines that contain the category and policy are a unique color compared to the rows that have rules
     	
-		$rowStyle = ' style="background-color: #4682B4; "' 
+		$rowStyle = ' style="background-color: #B0C4DE; "' 
+	
 		 
     
     # Add the row to the HTML
 		$html_ids_profile += "    <tr$rowStyle>
 			<td style='font-weight: bold;'>$($idsprofile.display_name)</td>
 			<td>$($idsprofile.profile_severity)</td>
-			<td colspan=6></td>
+			
 		</tr>`n"
 
 		
@@ -444,7 +445,7 @@ function Generate_IDS_Profile_Report {
 	return $html_ids_profile
 }
 
-function New-NSXLocalInfra {
+function Generate-Full-Report {
 
 	Write-Host "Generating output file..."
 
@@ -542,7 +543,7 @@ $html_policy = Generate_Policy_Report
 $html_ids_profile = Generate_IDS_Profile_Report
 
 $report_counts = Generate_Breakdown_Report
-New-NSXLocalInfra
+Generate-Full-Report
 
 
 
