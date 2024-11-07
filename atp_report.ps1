@@ -310,7 +310,7 @@ function Generate_Policy_Report {
 function Generate_IDS_Profile_Report {
 
 	# Loop through the data to create rows with conditional formatting
-	foreach ($idsprofile in $allIdsProfiles) {
+	foreach ($idsprofile in $allIdsProfiles | Where-object {$_._create_user -ne 'system' -And $_._system_owned -eq $False}) {
     # Ensure that lines that contain the category and policy are a unique color compared to the rows that have rules
     	
 		$rowStyle = ' style="background-color: #B0C4DE; "' 
