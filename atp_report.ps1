@@ -13,7 +13,7 @@ $Cred = New-Object -TypeName System.Management.Automation.PSCredential -Argument
 # Uri will get only securitypolices, groups, context profiles and services under infra
 
 
-$Uri = 'https://'+$nsxmgr+'/policy/api/v1/infra?type_filter=SecurityPolicy;Group;PolicyContextProfile;Service;'
+$Uri = 'https://'+$nsxmgr+'/policy/api/v1/infra?type_filter=IdsSecurityPolicy;Group;IdsProfile;Service;'
 
 
 #This is formatting data for the later creation of the html file 
@@ -83,22 +83,12 @@ Write-Host "Requesting data from target NSX Manager..."
 
 $rawpolicy = Invoke-RestMethod -Uri $Uri -SkipCertificateCheck -Authentication Basic -Credential $Cred 
 
-# inserting logic so i can see how many lines are in the base $rawpolicy
-
-# Convert $rawpolicy to JSON string
-$rawPolicyJson = $rawpolicy | ConvertTo-Json -Depth 10
-
-# Split JSON string into lines and count the number of lines
-$lineCount = ($rawPolicyJson -split "`n").Count
-
-Write-Host "Number of lines in the JSON string: $lineCount"
-
 
 # Gathering security policies
 
-Write-Host "Gathering DFW Security Policies and rules..."
+Write-Host "Gathering IDS/IPS Policies and rules..."
 
-$secpolicies = $rawpolicy.children.Domain.children.SecurityPolicy | Where-object {$_.id -And $_.id -ne 'Default'} | Sort-Object -Property internal_sequence_number
+$secpolicies = $rawpolicy.children.Domain.children.IdsSecurityPolicy | Where-object {$_.id -And $_.id -ne 'Default'} | Sort-Object -Property internal_sequence_number
 
 
 
@@ -116,12 +106,11 @@ $allservices = $rawpolicy.children.Service | Where-object {$_.id}
 
 # Gathering Context Profiles
 
-Write-Host "Gathering Context Profiles..."
+Write-Host "Gathering IDS/IPS Profiles..."
 
-$allcontextprofiles = $rawpolicy.children.PolicyContextProfile | Where-object {$_.id}
+$allIdsProfiles = $rawpolicy.children.IdsProfile | Where-object {$_.id}
 
-# Gathering Tags
-$alltags = $rawpolicy.children.Tags | Where-Object {$_.id}
+
 
 
 
@@ -133,27 +122,27 @@ function Generate_Breakdown_Report {
 	$rule_count = 0
 	foreach ($secpolicy in $secpolicies | Where-object {$_._create_user -ne 'system' -And $_._system_owned -eq $False}) {
 		$policy_count++
-		foreach ($rule in $secpolicy.children.Rule){
+		foreach ($rule in $secpolicy.children.IdsRule){
 			$rule_count++
 		}
 	}
 
-	$svc_count = 0
-	foreach ($svc in $allservices | Where-Object {$_.is_default -eq $False}){
-		$svc_count++
+	# $svc_count = 0
+	# foreach ($svc in $allservices | Where-Object {$_.is_default -eq $False}){
+	# 	$svc_count++
+	# }
+
+	$ids_pro_count = 0
+	foreach ($ids_pro in $allIdsProfiles | Where-object {$_._create_user -ne 'system' -And $_._system_owned -eq $False}){
+		$ids_pro_count++
 	}
 
-	$cxt_pro_count = 0
-	foreach ($cxt_pro in $allcontextprofiles | Where-object {$_._create_user -ne 'system' -And $_._system_owned -eq $False}){
-		$cxt_pro_count++
-	}
+	# $group_count = 0
+	# foreach ($grp in $allgroups | Where-object {$_._create_user -ne 'system' -And $_._system_owned -eq $False}){
+	# 	$group_count++
+	# }
 
-	$group_count = 0
-	foreach ($grp in $allgroups | Where-object {$_._create_user -ne 'system' -And $_._system_owned -eq $False}){
-		$group_count++
-	}
-
-	$report_counts = @($policy_count,$rule_count,$svc_count,$cxt_pro_count,$group_count)
+	$report_counts = @($policy_count,$rule_count,$ids_pro_count)
 
 
 	return $report_counts
@@ -172,13 +161,9 @@ function Generate_Policy_Report {
     # Ensure that lines that contain the category and policy are a unique color compared to the rows that have rules
 	
     	$rowStyle = ''
-    	if ($secpolicy.category -eq "Infrastructure") {
-        	$rowStyle = ' style="background-color: #2F8A4C; "' 
-    	} elseif ($secpolicy.category -eq "Environment") {
+    	if ($secpolicy.category -eq "ThreatRules") {
 			$rowStyle = ' style="background-color: #4682B4; "' 
-		} elseif ($secpolicy.category -eq "Application") {
-			$rowStyle = ' style="background-color: #995CD5; "' 
-		}
+		} 
     
     # Add the row to the HTML
 		$html_policy += "    <tr$rowStyle>
@@ -192,7 +177,7 @@ function Generate_Policy_Report {
 	# Gathering all rules and polices
 
 		
-		$sortrules = $secpolicy.children.Rule | Sort-Object -Property sequence_number
+		$sortrules = $secpolicy.children.IdsRule | Sort-Object -Property sequence_number
 	
 		$rowCount = 0
 		foreach ($rule in $sortrules | Where-object {$_.id}){
@@ -204,7 +189,7 @@ function Generate_Policy_Report {
 			$ruleentrysrc = ""
 			$ruleentrydst = ""
 			$ruleentrysvc = ""
-			$ruleentrycxtpro = ""
+			$ruleentryidspro = ""
 
 			foreach ($srcgroup in $rule.source_groups){
 				$n = 0
@@ -252,19 +237,19 @@ function Generate_Policy_Report {
 				}							
 			}
 			
-			
-			foreach ($cxtprogroup in $rule.profiles){  
+			Write-Host $rule.ids_profiles
+			foreach ($IdsProfile in $rule.ids_profiles){  
 				$n = 0
-				foreach ($filctxpro in $allcontextprofiles){
-					if ($filctxpro.path -eq $cxtprogroup){
-						$ruleentrycxtpro += $filctxpro.display_name + "`n"
+				foreach ($filIdsPro in $allIdsProfiles){
+					if ($filIdsPro.path -eq $IdsProfile){
+						$ruleentryidspro += $filIdsPro.display_name + "`n"
 						$n = 1
 						break
 					}
 					
 				}
 				if ($n -eq "0") {
-					$ruleentrycxtpro += $cxtprogroup + "`n"
+					$ruleentryidspro += $IdsProfile + "`n"
 				}
 			}
 
@@ -282,16 +267,14 @@ function Generate_Policy_Report {
 # 					<th>Source Groups</th>
 # 					<th>Destination Groups</th>
 # 					<th>Services</th>
-# 					<th>Context Profiles</th>
+# 					<th>Security Profiles</th>
 # 					<th>Action</th>
 # 				</tr>
 # "@
 # 			}
 				
 			$rowCount++
-			#Write-Host $rowCount
-				
-
+			
 			# Add the row to the HTML
 			if ($rowCount % 2) {
 				$rowStyle2 = ' style="background-color: #B0C4DE;"'
@@ -302,15 +285,10 @@ function Generate_Policy_Report {
 			# Adding logic to alter the colors of the first two columns depending on the policy category
 
 	
-			if ($secpolicy.category -eq "Infrastructure") {
-				$nullStyle = ' style="background-color: #6BAC82; border-bottom: none; border-top: none;" colspan=2></td' 
-			} elseif ($secpolicy.category -eq "Environment") {
+			if ($secpolicy.category -eq "ThreatRules") {
 				$nullStyle = ' style="background-color: #6FA3D1; border-bottom: none; border-top: none;" colspan=2></td' 
-			} elseif ($secpolicy.category -eq "Application") {
-				$nullStyle = ' style="background-color: #DBACFC; border-bottom: none; border-top: none;" colspan=2></td' 
 			}
 	
-		#<td style='background-color: #6BAC82; border-bottom: none; border-top: none;' colspan=2></td>
 
 			$html_policy += "    <tr$rowStyle2>
 			<td$nullStyle>
@@ -318,7 +296,7 @@ function Generate_Policy_Report {
 			<td style='vertical-align: middle;'>$($ruleentrysrc)</td>
 			<td style='vertical-align: middle;'>$($ruleentrydst)</td>
 			<td style='vertical-align: middle;'>$($ruleentrysvc)</td>
-			<td style='vertical-align: middle;'>$($ruleentrycxtpro)</td>
+			<td style='vertical-align: middle;'>$($ruleentryidspro)</td>
 			<td style='vertical-align: middle;'>$($ruleentryaction)</td>
 			</tr>`n"
 			
@@ -357,24 +335,16 @@ function New-NSXLocalInfra {
     <p>&nbsp;</p>
     <table style="width: 60%; margin: 0 auto; border-collapse: collapse; font-size: 16px;">
         <tr>
-            <td style="padding: 10px; border-bottom: 1px solid #ccc;">Number of Distributed Firewall Security Policies <i>(excluding system generated)</i>:</td>
+            <td style="padding: 10px; border-bottom: 1px solid #ccc;">Number of Distributed IDS/IPS Policies:</td>
             <td style="padding: 10px; border-bottom: 1px solid #ccc; text-align: right;"><b>$($report_counts[0])</b></td>
         </tr>
         <tr>
-            <td style="padding: 10px; border-bottom: 1px solid #ccc;">Number of Distributed Firewall Rules <i>(excluding system generated)</i>:</td>
+            <td style="padding: 10px; border-bottom: 1px solid #ccc;">Number of Distributed IDS/IPS Rules:</td>
             <td style="padding: 10px; border-bottom: 1px solid #ccc; text-align: right;"><b>$($report_counts[1])</b></td>
         </tr>
         <tr>
-            <td style="padding: 10px; border-bottom: 1px solid #ccc;">Number of User Created Services:</td>
+            <td style="padding: 10px; border-bottom: 1px solid #ccc;">Number of User Created IDS/IPS Profiles:</td>
             <td style="padding: 10px; border-bottom: 1px solid #ccc; text-align: right;"><b>$($report_counts[2])</b></td>
-        </tr>
-        <tr>
-            <td style="padding: 10px; border-bottom: 1px solid #ccc;">Number of User Created Context Profiles:</td>
-            <td style="padding: 10px; border-bottom: 1px solid #ccc; text-align: right;"><b>$($report_counts[3])</b></td>
-        </tr>
-        <tr>
-            <td style="padding: 10px;">Number of User Created Groups:</td>
-            <td style="padding: 10px; text-align: right;"><b>$($report_counts[4])</b></td>
         </tr>
     </table>
 	<p>&nbsp;</p>
@@ -388,7 +358,7 @@ function New-NSXLocalInfra {
 				<th>Source Groups</th>
 				<th>Destination Groups</th>
 				<th>Services</th>
-				<th>Context Profiles</th>
+				<th>Security Profiles</th>
 				<th>Action</th>
 			</tr>
 		</thead>
