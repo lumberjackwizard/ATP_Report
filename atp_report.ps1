@@ -461,7 +461,7 @@ function Generate-Full-Report {
         <img src="logo.png" alt="Logo" class="logo">
     </div>
 	<p style="text-align:center;">
-        <span style="font-size:22px;"><strong><u>Segmentation Report</u></strong></span>
+        <span style="font-size:22px;"><strong><u>ATP Report</u></strong></span>
     </p>
     <p>&nbsp;</p>
     <table style="width: 60%; margin: 0 auto; border-collapse: collapse; font-size: 16px;">
@@ -543,6 +543,8 @@ $html_policy = Generate_Policy_Report
 $html_ids_profile = Generate_IDS_Profile_Report
 
 $report_counts = Generate_Breakdown_Report
+
+
 Generate-Full-Report
 
 
