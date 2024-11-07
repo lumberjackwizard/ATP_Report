@@ -151,11 +151,6 @@ function Generate_Breakdown_Report {
 
 function Generate_Policy_Report {
 
-	
-	#NEW ATTEMPT#
-
-	
-
 	# Loop through the data to create rows with conditional formatting
 	foreach ($secpolicy in $secpolicies | Where-object {$_._create_user -ne 'system' -And $_._system_owned -eq $False}) {
     # Ensure that lines that contain the category and policy are a unique color compared to the rows that have rules
@@ -312,7 +307,142 @@ function Generate_Policy_Report {
 }
 
 
+function Generate_IDS_Profile_Report {
 
+	# Loop through the data to create rows with conditional formatting
+	foreach ($idsprofile in $allIdsProfiles) {
+    # Ensure that lines that contain the category and policy are a unique color compared to the rows that have rules
+    	
+		$rowStyle = ' style="background-color: #4682B4; "' 
+		 
+    
+    # Add the row to the HTML
+		$html_ids_profile += "    <tr$rowStyle>
+			<td style='font-weight: bold;'>$($idsprofile.display_name)</td>
+			<td>$($idsprofile.profile_severity)</td>
+			<td colspan=6></td>
+		</tr>`n"
+
+		
+	
+	# # Gathering all rules and polices
+
+		
+	# 	$sortrules = $secpolicy.children.IdsRule | Sort-Object -Property sequence_number
+	
+	# 	$rowCount = 0
+	 #	foreach ($rule in $sortrules | Where-object {$_.id}){
+			
+			
+	# 		$ruleentryname = $rule.display_name
+	# 		$ruleentryaction = $rule.action
+	
+	# 		$ruleentrysrc = ""
+	# 		$ruleentrydst = ""
+	# 		$ruleentrysvc = ""
+	# 		$ruleentryidspro = ""
+
+	# 		foreach ($srcgroup in $rule.source_groups){
+	# 			$n = 0
+	# 			foreach ($filteredgroup in $allgroups){
+	# 				if ($filteredgroup.path -eq $srcgroup){
+	# 					$ruleentrysrc += $filteredgroup.display_name + "`n"
+	# 					$n = 1
+	# 					break
+	# 				}
+					
+	# 			}
+	# 			if ($n -eq "0") {
+	# 				$ruleentrysrc += $srcgroup + "`n"
+	# 				}	
+	# 		}
+			
+			
+	# 		foreach ($dstgroup in $rule.destination_groups){  
+	# 			$n = 0
+	# 			foreach ($filteredgroup in $allgroups){
+	# 				if ($filteredgroup.path -eq $dstgroup){
+	# 					$ruleentrydst += $filteredgroup.display_name + "`n"
+	# 					$n = 1
+	# 					break
+	# 				}
+					
+	# 			}
+	# 			if ($n -eq "0") {
+	# 				$ruleentrydst += $dstgroup + "`n"
+	# 			}
+	# 		}	
+
+	# 		foreach ($svcgroup in $rule.services){ 
+	# 			$n = 0
+	# 			foreach ($filsvc in $allservices){
+	# 				if ($filsvc.path -eq $svcgroup){
+	# 					$ruleentrysvc += $filsvc.display_name + "`n"
+	# 					$n = 1
+	# 					break
+	# 				}
+					
+	# 			}
+	# 			if ($n -eq "0") {
+	# 				$ruleentrysvc += $svcgroup + "`n"
+	# 			}							
+	# 		}
+			
+	# 		Write-Host $rule.ids_profiles
+	# 		foreach ($IdsProfile in $rule.ids_profiles){  
+	# 			$n = 0
+	# 			foreach ($filIdsPro in $allIdsProfiles){
+	# 				if ($filIdsPro.path -eq $IdsProfile){
+	# 					$ruleentryidspro += $filIdsPro.display_name + "`n"
+	# 					$n = 1
+	# 					break
+	# 				}
+					
+	# 			}
+	# 			if ($n -eq "0") {
+	# 				$ruleentryidspro += $IdsProfile + "`n"
+	# 			}
+	# 		}
+
+
+				
+			# $rowCount++
+			
+			# # Add the row to the HTML
+			# if ($rowCount % 2) {
+			# 	$rowStyle2 = ' style="background-color: #B0C4DE;"'
+			# } else { 
+			# 	$rowStyle2 = ' style="background-color: #949BAF;"'
+			# }
+
+			# Adding logic to alter the colors of the first two columns depending on the policy category
+
+	
+			
+			# $nullStyle = ' style="background-color: #6FA3D1; border-bottom: none; border-top: none;" colspan=2></td' 
+			
+	
+
+			# $html_policy += "    <tr$rowStyle2>
+			# <td$nullStyle>
+			# <td style='vertical-align: middle;'>$($ruleentryname)</td>
+			# <td style='vertical-align: middle;'>$($ruleentrysrc)</td>
+			# <td style='vertical-align: middle;'>$($ruleentrydst)</td>
+			# <td style='vertical-align: middle;'>$($ruleentrysvc)</td>
+			# <td style='vertical-align: middle;'>$($ruleentryidspro)</td>
+			# <td style='vertical-align: middle;'>$($ruleentryaction)</td>
+			# </tr>`n"
+			
+			
+#		}  
+	}
+
+	
+
+
+   
+	return $html_ids_profile
+}
 
 function New-NSXLocalInfra {
 
@@ -348,7 +478,7 @@ function New-NSXLocalInfra {
         </tr>
     </table>
 	<p>&nbsp;</p>
-	<p style="text-align:center;"><span style="font-size:18px;"><strong><u>Security Policies and associated rules (excluding system generated)&nbsp;</u></strong></span></p>
+	<p style="text-align:center;"><span style="font-size:18px;"><strong><u>IDS/IPS Policies</u></strong></span></p>
 	<table>
 		<thead>
 			<tr>
@@ -369,8 +499,26 @@ function New-NSXLocalInfra {
 		$html += $html_policy
 
 
-		#close the security policies  table
+		#close the security policies table and start the IDS Profiles table
 		$html += @"
+		</tbody>
+	</table>
+		<p>&nbsp;</p>
+	<p style="text-align:center;"><span style="font-size:18px;"><strong><u>IDS/IPS Profiles</u></strong></span></p>
+	<table>
+		<thead>
+			<tr>
+				<th>Name</th>
+				<th>Included Intrusion Severities</th>
+			</tr>
+		</thead>
+		<tbody>
+"@		
+		
+		$html += $html_ids_profile
+		#close the IDS Profiles table and the entire html
+		$html += @"
+
 		</tbody>
 		<tfoot>
 			<tr style="border-top: 2px solid black;"></tr>
@@ -390,6 +538,8 @@ function New-NSXLocalInfra {
 
 
 $html_policy = Generate_Policy_Report
+
+$html_ids_profile = Generate_IDS_Profile_Report
 
 $report_counts = Generate_Breakdown_Report
 New-NSXLocalInfra
