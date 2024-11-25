@@ -1,115 +1,72 @@
 #Created using PowerShell 7.4.5
 
-# Temporarily hard setting nsxmgr and credentials for development. Get-Credential will be used in the future. 
+############################
+# Functions
+############################
 
-$nsxmgr = '172.16.10.11'
-$nsxuser = 'admin'
-$nsxpasswd = ConvertTo-SecureString -String 'VMware1!VMware1!' -AsPlainText -Force
-$Cred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $nsxuser, $nsxpasswd
+function Invoke-CheckNSXCredentials(){
+	$checkUri = 'https://'+$nsxmgr+'/policy/api/v1/infra'
 
-#$nsxmgr = Read-Host "Enter NSX Manager IP or FQDN"
-#$Cred = Get-Credential -Title 'NSX Manager Credentials' -Message 'Enter NSX Username and Password'
-
-# Uri will get only securitypolices, groups, context profiles and services under infra
-
-
-$Uri = 'https://'+$nsxmgr+'/policy/api/v1/infra?type_filter=IdsSecurityPolicy;Group;IdsProfile;Service;'
-
-
-#This is formatting data for the later creation of the html file 
-
-$header = @"
-<style>
-table {
-font-size: 14px;
-border-collapse: collapse;
-width: 100%; 
-font-family: Arial, Helvetica, sans-serif;
-} 
-
-    td {
-padding: 4px;
-margin: 0;
-border: 1px solid #4d4d4d;
-word-wrap: break-word;
-overflow-wrap: break-word;
-white-space: pre-wrap;
-max-width: 300px;
-}
-
-    th {
-        background: #395870;
-        background: linear-gradient(#49708f, #293f50);
-        color: #fff;
-        font-size: 11px;
-        text-transform: uppercase;
-        padding: 10px 15px;
-        vertical-align: middle;
-		border: 1px solid #4d4d4d;
-}
-
-
-	td:nth-child(1), th:nth-child(1),
-	td:nth-child(2), th:nth-child(2) {
-    font-weight: bold;                   /* Makes text bold for the first two columns */
+	#using Invoke-WebRequst to evaluate the statuscode that is returned from the NSX Manager
+	$response = Invoke-WebRequest -Uri $checkUri -Method Get -SkipCertificateCheck -Authentication Basic -Credential $Cred -SkipHttpErrorCheck
+	
+	if ($response.StatusCode -eq 200) {
+		Write-Host "Successfully connected to NSX Manager. Status: 200 OK"
+	} else {
+		Write-Host "Failed to connect to NSX Manager." 
+		Write-Host "Status: $($response.StatusCode)"
+		Write-Host "Error Message:" ($response.Content)
+		Write-Host "Exiting script... Please try again. "
+		exit
 	}
 
-        #CreationDate {
+}
 
-        font-family: Arial, Helvetica, sans-serif;
-        color: #ff3300;
-        font-size: 12px;
+function Get-NSXDFW {
 
-    }
+	# The below gathers all securitypolicies, groups, and services from infra, storing it in 
+	# the $rawpolicy variable 
 
-.logo {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            width: 200px; /* Adjust size as needed */
-            height: auto;
-        }
-    
-</style>
-"@
+	Write-Host "Requesting data from target NSX Manager..."
 
-$html_policy = " "
+	$rawpolicy = Invoke-RestMethod -Uri $Uri -SkipCertificateCheck -Authentication Basic -Credential $Cred
+	$rawservices = Invoke-RestMethod -Uri $SvcUri -SkipCertificateCheck -Authentication Basic -Credential $Cred
 
 
-# The below gathers all securitypolicies, groups, and services from infra, storing it in 
-# the $rawpolicy variable 
+	# Gathering IDS policies
 
-Write-Host "Requesting data from target NSX Manager..."
+	Write-Host "Gathering IDS/IPS Policies and rules..."
 
-$rawpolicy = Invoke-RestMethod -Uri $Uri -SkipCertificateCheck -Authentication Basic -Credential $Cred 
-
-
-# Gathering security policies
-
-Write-Host "Gathering IDS/IPS Policies and rules..."
-
-$secpolicies = $rawpolicy.children.Domain.children.IdsSecurityPolicy | Where-object {$_.id -And $_.id -ne 'Default'} | Sort-Object -Property internal_sequence_number
+	$idspolicies = $rawpolicy.children.Domain.children.IdsSecurityPolicy | Where-object {$_.id -And $_.id -ne 'Default'} | Sort-Object -Property internal_sequence_number
 
 
 
-# Gathering Groups
+	# Gathering Groups
 
-Write-Host "Gathering Groups..."
+	Write-Host "Gathering Groups..."
 
-$allgroups = $rawpolicy.children.Domain.children.Group | Where-object {$_.id}
-
-
-Write-Host "Gathering Serivces..."
-
-$allservices = $rawpolicy.children.Service | Where-object {$_.id}
+	$allgroups = $rawpolicy.children.Domain.children.Group | Where-object {$_.id}
 
 
-# Gathering Context Profiles
+	Write-Host "Gathering Serivces..."
 
-Write-Host "Gathering IDS/IPS Profiles..."
+	$allservices = $rawservices.children.Service | Where-object {$_.id}
 
-$allIdsProfiles = $rawpolicy.children.IdsProfile | Where-object {$_.id}
 
+	# Gathering Context Profiles
+
+	Write-Host "Gathering IDS/IPS Profiles..."
+
+	$allIdsProfiles = $rawpolicy.children.IdsProfile | Where-object {$_.id}
+
+	return [PSCustomObject]@{
+		AllIDSPolicies = $idspolicies
+		AllGroups = $allgroups
+		AllServices = $allservices
+		AllIDSProfiles = $allIdsProfiles
+	}
+
+}
 
 
 
@@ -120,9 +77,9 @@ function Generate_Breakdown_Report {
 
 	$policy_count = 0
 	$rule_count = 0
-	foreach ($secpolicy in $secpolicies | Where-object {$_._create_user -ne 'system' -And $_._system_owned -eq $False}) {
+	foreach ($idsPolicy in $allIdsPolicies | Where-object {$_._create_user -ne 'system' -And $_._system_owned -eq $False}) {
 		$policy_count++
-		foreach ($rule in $secpolicy.children.IdsRule){
+		foreach ($rule in $idsPolicy.children.IdsRule){
 			$rule_count++
 		}
 	}
@@ -152,18 +109,17 @@ function Generate_Breakdown_Report {
 function Generate_Policy_Report {
 
 	# Loop through the data to create rows with conditional formatting
-	foreach ($secpolicy in $secpolicies | Where-object {$_._create_user -ne 'system' -And $_._system_owned -eq $False}) {
+	foreach ($idsPolicy in $allIdsPolicies | Where-object {$_._create_user -ne 'system' -And $_._system_owned -eq $False}) {
     # Ensure that lines that contain the category and policy are a unique color compared to the rows that have rules
 	
     	$rowStyle = ''
-    	if ($secpolicy.category -eq "ThreatRules") {
+    	if ($idsPolicy.category -eq "ThreatRules") {
 			$rowStyle = ' style="background-color: #4682B4; "' 
 		} 
     
     # Add the row to the HTML
 		$html_policy += "    <tr$rowStyle>
-			<td style='font-weight: bold;'>$($secpolicy.category)</td>
-			<td>$($secpolicy.display_name)</td>
+			<td style='font-weight: bold;'>$($idsPolicy.display_name)</td>
 			<td colspan=6></td>
 		</tr>`n"
 
@@ -172,7 +128,7 @@ function Generate_Policy_Report {
 	# Gathering all rules and polices
 
 		
-		$sortrules = $secpolicy.children.IdsRule | Sort-Object -Property sequence_number
+		$sortrules = $idsPolicy.children.IdsRule | Sort-Object -Property sequence_number
 	
 		$rowCount = 0
 		foreach ($rule in $sortrules | Where-object {$_.id}){
@@ -188,7 +144,7 @@ function Generate_Policy_Report {
 
 			foreach ($srcgroup in $rule.source_groups){
 				$n = 0
-				foreach ($filteredgroup in $allgroups){
+				foreach ($filteredgroup in $allGroups){
 					if ($filteredgroup.path -eq $srcgroup){
 						$ruleentrysrc += $filteredgroup.display_name + "`n"
 						$n = 1
@@ -204,7 +160,7 @@ function Generate_Policy_Report {
 			
 			foreach ($dstgroup in $rule.destination_groups){  
 				$n = 0
-				foreach ($filteredgroup in $allgroups){
+				foreach ($filteredgroup in $allGroups){
 					if ($filteredgroup.path -eq $dstgroup){
 						$ruleentrydst += $filteredgroup.display_name + "`n"
 						$n = 1
@@ -219,7 +175,7 @@ function Generate_Policy_Report {
 
 			foreach ($svcgroup in $rule.services){ 
 				$n = 0
-				foreach ($filsvc in $allservices){
+				foreach ($filsvc in $allServices){
 					if ($filsvc.path -eq $svcgroup){
 						$ruleentrysvc += $filsvc.display_name + "`n"
 						$n = 1
@@ -280,8 +236,8 @@ function Generate_Policy_Report {
 			# Adding logic to alter the colors of the first two columns depending on the policy category
 
 	
-			if ($secpolicy.category -eq "ThreatRules") {
-				$nullStyle = ' style="background-color: #6FA3D1; border-bottom: none; border-top: none;" colspan=2></td' 
+			if ($idsPolicy.category -eq "ThreatRules") {
+				$nullStyle = ' style="background-color: #6FA3D1; border-bottom: none; border-top: none;"></td' 
 			}
 	
 
@@ -483,8 +439,7 @@ function Generate-Full-Report {
 	<table>
 		<thead>
 			<tr>
-				<th>Category</th>
-				<th>Security Policy Name</th>
+				<th>IDS/IPS Policy Name</th>
 				<th>Rule Name</th>
 				<th>Source Groups</th>
 				<th>Destination Groups</th>
@@ -535,6 +490,105 @@ function Generate-Full-Report {
 	$html | Set-Content -Path 'output.html'  # Save to an HTML file
 
 }
+
+
+#############################
+# HTML Configuration elements
+#############################
+
+
+#This is formatting data for the later creation of the html file 
+
+$header = @"
+<style>
+table {
+font-size: 14px;
+border-collapse: collapse;
+width: 100%; 
+font-family: Arial, Helvetica, sans-serif;
+} 
+
+    td {
+padding: 4px;
+margin: 0;
+border: 1px solid #4d4d4d;
+word-wrap: break-word;
+overflow-wrap: break-word;
+white-space: pre-wrap;
+max-width: 300px;
+}
+
+    th {
+        background: #395870;
+        background: linear-gradient(#49708f, #293f50);
+        color: #fff;
+        font-size: 11px;
+        text-transform: uppercase;
+        padding: 10px 15px;
+        vertical-align: middle;
+		border: 1px solid #4d4d4d;
+}
+
+
+	td:nth-child(1), th:nth-child(1),
+	td:nth-child(2), th:nth-child(2) {
+    font-weight: bold;                   /* Makes text bold for the first two columns */
+	}
+
+        #CreationDate {
+
+        font-family: Arial, Helvetica, sans-serif;
+        color: #ff3300;
+        font-size: 12px;
+
+    }
+
+.logo {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 200px; /* Adjust size as needed */
+            height: auto;
+        }
+    
+</style>
+"@
+
+$html_policy = " "
+
+
+
+############################################
+# Main
+############################################
+
+
+# Temporarily hard setting nsxmgr and credentials for development. Get-Credential will be used in the future. 
+
+$nsxmgr = '172.16.10.11'
+$nsxuser = 'admin'
+$nsxpasswd = ConvertTo-SecureString -String 'VMware1!VMware1!' -AsPlainText -Force
+$Cred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $nsxuser, $nsxpasswd
+
+#$nsxmgr = Read-Host "Enter NSX Manager IP or FQDN"
+#$Cred = Get-Credential -Title 'NSX Manager Credentials' -Message 'Enter NSX Username and Password'
+
+# Uri will get only securitypolices, groups, and context profiles under infra
+# SvcUri will gather all services under infra
+
+
+$Uri = 'https://'+$nsxmgr+'/policy/api/v1/infra?type_filter=IdsSecurityPolicy;Group;IdsProfile;'
+$SvcUri = 'https://'+$nsxmgr+'/policy/api/v1/infra?type_filter=Service;'
+
+
+Invoke-CheckNSXCredentials
+
+$allpolicies = Get-NSXDFW
+
+$allIdsPolicies = $allpolicies.AllIDSPolicies
+$allGroups = $allpolicies.AllGroups
+$allServices = $allpolicies.AllServices
+$allIdsProfiles = $allpolicies.AllIDSProfiles
 
 
 
