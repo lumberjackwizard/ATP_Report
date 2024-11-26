@@ -35,7 +35,7 @@ function Get-NSXDFW {
 
 	# Gathering IDS policies
 
-	Write-Host "Gathering IDS/IPS Policies and rules..."
+	Write-Host "Gathering IDS/IPS & Malware Prevention Policies and rules..."
 
 	$idspolicies = $rawpolicy.children.Domain.children.IdsSecurityPolicy | Where-object {$_.id -And $_.id -ne 'Default'} | Sort-Object -Property internal_sequence_number
 
@@ -55,15 +55,18 @@ function Get-NSXDFW {
 
 	# Gathering Context Profiles
 
-	Write-Host "Gathering IDS/IPS Profiles..."
+	Write-Host "Gathering IDS/IPS & Malware Prevention Profiles..."
 
 	$allIdsProfiles = $rawpolicy.children.IdsProfile | Where-object {$_.id}
+	$allMalwareProfiles = $rawpolicy.children.MalwarePreventionProfile | Where-Object {$_.id}
+
 
 	return [PSCustomObject]@{
 		AllIDSPolicies = $idspolicies
 		AllGroups = $allgroups
 		AllServices = $allservices
 		AllIDSProfiles = $allIdsProfiles
+		AllMalwareProfiles = $allMalwareProfiles
 	}
 
 }
@@ -72,7 +75,7 @@ function Get-NSXDFW {
 
 
 
-function Generate_Breakdown_Report {
+function Invoke-GenerateBreakdownReport {
 	
 
 	$policy_count = 0
@@ -84,20 +87,11 @@ function Generate_Breakdown_Report {
 		}
 	}
 
-	# $svc_count = 0
-	# foreach ($svc in $allservices | Where-Object {$_.is_default -eq $False}){
-	# 	$svc_count++
-	# }
 
 	$ids_pro_count = 0
 	foreach ($ids_pro in $allIdsProfiles | Where-object {$_._create_user -ne 'system' -And $_._system_owned -eq $False}){
 		$ids_pro_count++
 	}
-
-	# $group_count = 0
-	# foreach ($grp in $allgroups | Where-object {$_._create_user -ne 'system' -And $_._system_owned -eq $False}){
-	# 	$group_count++
-	# }
 
 	$report_counts = @($policy_count,$rule_count,$ids_pro_count)
 
@@ -106,7 +100,7 @@ function Generate_Breakdown_Report {
 }
 
 
-function Generate_Policy_Report {
+function Invoke-GeneratePolicyReport {
 
 	# Loop through the data to create rows with conditional formatting
 	foreach ($idsPolicy in $allIdsPolicies | Where-object {$_._create_user -ne 'system' -And $_._system_owned -eq $False}) {
@@ -120,7 +114,7 @@ function Generate_Policy_Report {
     # Add the row to the HTML
 		$html_policy += "    <tr$rowStyle>
 			<td style='font-weight: bold;'>$($idsPolicy.display_name)</td>
-			<td colspan=6></td>
+			<td colspan=7></td>
 		</tr>`n"
 
 		
@@ -132,7 +126,7 @@ function Generate_Policy_Report {
 	
 		$rowCount = 0
 		foreach ($rule in $sortrules | Where-object {$_.id}){
-			
+		
 			
 			$ruleentryname = $rule.display_name
 			$ruleentryaction = $rule.action
@@ -141,6 +135,7 @@ function Generate_Policy_Report {
 			$ruleentrydst = ""
 			$ruleentrysvc = ""
 			$ruleentryidspro = ""
+			$ruleentryappliedto = ""
 
 			foreach ($srcgroup in $rule.source_groups){
 				$n = 0
@@ -188,7 +183,6 @@ function Generate_Policy_Report {
 				}							
 			}
 			
-			Write-Host $rule.ids_profiles
 			foreach ($IdsProfile in $rule.ids_profiles){  
 				$n = 0
 				foreach ($filIdsPro in $allIdsProfiles){
@@ -196,33 +190,37 @@ function Generate_Policy_Report {
 						$ruleentryidspro += $filIdsPro.display_name + "`n"
 						$n = 1
 						break
-					}
-					
+					}					
 				}
+
+				foreach ($filMalwarePro in $allMalwareProfiles){
+					if ($filMalwarePro.path -eq $IdsProfile){
+						$ruleentryidspro += $filMalwarePro.display_name + "`n"
+						$n = 1
+						break
+					}					
+				}
+
+
 				if ($n -eq "0") {
 					$ruleentryidspro += $IdsProfile + "`n"
 				}
 			}
 
-# The below code works, but still evaluating if there's a benefit to re-inserting the headers after 'x' 
-# number of rows. Right now, this evaulation happens within each policy, so it's rows (aka rules) in the 
-# policy, and not overall rows. 
-
-# 			if ($rowCount -gt 0 -and $rowCount % 20 -eq 0) {
-# 				# Insert the header again after every 20 rows
-# 				$html_policy += @"
-# 				<tr>
-# 					<th>Category</th>
-# 					<th>Security Policy Name</th>
-# 					<th>Rule Name</th>
-# 					<th>Source Groups</th>
-# 					<th>Destination Groups</th>
-# 					<th>Services</th>
-# 					<th>Security Profiles</th>
-# 					<th>Action</th>
-# 				</tr>
-# "@
-# 			}
+			foreach ($appliedto in $rule.scope){ 
+				$n = 0
+				foreach ($filteredgroup in $allGroups){
+					if ($filteredgroup.path -eq $appliedto){
+						$ruleentryappliedto += $filteredgroup.display_name + "`n"
+						$n = 1
+						break
+					}
+					
+				}
+				if ($n -eq "0") {
+					$ruleentryappliedto += $appliedto + "`n"
+				}							
+			}
 				
 			$rowCount++
 			
@@ -248,6 +246,7 @@ function Generate_Policy_Report {
 			<td style='vertical-align: middle;'>$($ruleentrydst)</td>
 			<td style='vertical-align: middle;'>$($ruleentrysvc)</td>
 			<td style='vertical-align: middle;'>$($ruleentryidspro)</td>
+			<td style='vertical-align: middle;'>$($ruleentryappliedto)</td>
 			<td style='vertical-align: middle;'>$($ruleentryaction)</td>
 			</tr>`n"
 			
@@ -263,7 +262,7 @@ function Generate_Policy_Report {
 }
 
 
-function Generate_IDS_Profile_Report {
+function Invoke-GenerateIDSProfileReport {
 
 	# Loop through the data to create rows with conditional formatting
 	foreach ($idsprofile in $allIdsProfiles | Where-object {$_._create_user -ne 'system' -And $_._system_owned -eq $False}) {
@@ -280,128 +279,12 @@ function Generate_IDS_Profile_Report {
 			
 		</tr>`n"
 
-		
-	
-	# # Gathering all rules and polices
-
-		
-	# 	$sortrules = $secpolicy.children.IdsRule | Sort-Object -Property sequence_number
-	
-	# 	$rowCount = 0
-	 #	foreach ($rule in $sortrules | Where-object {$_.id}){
-			
-			
-	# 		$ruleentryname = $rule.display_name
-	# 		$ruleentryaction = $rule.action
-	
-	# 		$ruleentrysrc = ""
-	# 		$ruleentrydst = ""
-	# 		$ruleentrysvc = ""
-	# 		$ruleentryidspro = ""
-
-	# 		foreach ($srcgroup in $rule.source_groups){
-	# 			$n = 0
-	# 			foreach ($filteredgroup in $allgroups){
-	# 				if ($filteredgroup.path -eq $srcgroup){
-	# 					$ruleentrysrc += $filteredgroup.display_name + "`n"
-	# 					$n = 1
-	# 					break
-	# 				}
-					
-	# 			}
-	# 			if ($n -eq "0") {
-	# 				$ruleentrysrc += $srcgroup + "`n"
-	# 				}	
-	# 		}
-			
-			
-	# 		foreach ($dstgroup in $rule.destination_groups){  
-	# 			$n = 0
-	# 			foreach ($filteredgroup in $allgroups){
-	# 				if ($filteredgroup.path -eq $dstgroup){
-	# 					$ruleentrydst += $filteredgroup.display_name + "`n"
-	# 					$n = 1
-	# 					break
-	# 				}
-					
-	# 			}
-	# 			if ($n -eq "0") {
-	# 				$ruleentrydst += $dstgroup + "`n"
-	# 			}
-	# 		}	
-
-	# 		foreach ($svcgroup in $rule.services){ 
-	# 			$n = 0
-	# 			foreach ($filsvc in $allservices){
-	# 				if ($filsvc.path -eq $svcgroup){
-	# 					$ruleentrysvc += $filsvc.display_name + "`n"
-	# 					$n = 1
-	# 					break
-	# 				}
-					
-	# 			}
-	# 			if ($n -eq "0") {
-	# 				$ruleentrysvc += $svcgroup + "`n"
-	# 			}							
-	# 		}
-			
-	# 		Write-Host $rule.ids_profiles
-	# 		foreach ($IdsProfile in $rule.ids_profiles){  
-	# 			$n = 0
-	# 			foreach ($filIdsPro in $allIdsProfiles){
-	# 				if ($filIdsPro.path -eq $IdsProfile){
-	# 					$ruleentryidspro += $filIdsPro.display_name + "`n"
-	# 					$n = 1
-	# 					break
-	# 				}
-					
-	# 			}
-	# 			if ($n -eq "0") {
-	# 				$ruleentryidspro += $IdsProfile + "`n"
-	# 			}
-	# 		}
-
-
-				
-			# $rowCount++
-			
-			# # Add the row to the HTML
-			# if ($rowCount % 2) {
-			# 	$rowStyle2 = ' style="background-color: #B0C4DE;"'
-			# } else { 
-			# 	$rowStyle2 = ' style="background-color: #949BAF;"'
-			# }
-
-			# Adding logic to alter the colors of the first two columns depending on the policy category
-
-	
-			
-			# $nullStyle = ' style="background-color: #6FA3D1; border-bottom: none; border-top: none;" colspan=2></td' 
-			
-	
-
-			# $html_policy += "    <tr$rowStyle2>
-			# <td$nullStyle>
-			# <td style='vertical-align: middle;'>$($ruleentryname)</td>
-			# <td style='vertical-align: middle;'>$($ruleentrysrc)</td>
-			# <td style='vertical-align: middle;'>$($ruleentrydst)</td>
-			# <td style='vertical-align: middle;'>$($ruleentrysvc)</td>
-			# <td style='vertical-align: middle;'>$($ruleentryidspro)</td>
-			# <td style='vertical-align: middle;'>$($ruleentryaction)</td>
-			# </tr>`n"
-			
-			
-#		}  
 	}
-
-	
-
-
-   
+  
 	return $html_ids_profile
 }
 
-function Generate-Full-Report {
+function Invoke-GenerateFullReport {
 
 	Write-Host "Generating output file..."
 
@@ -422,11 +305,11 @@ function Generate-Full-Report {
     <p>&nbsp;</p>
     <table style="width: 60%; margin: 0 auto; border-collapse: collapse; font-size: 16px;">
         <tr>
-            <td style="padding: 10px; border-bottom: 1px solid #ccc;">Number of Distributed IDS/IPS Policies:</td>
+            <td style="padding: 10px; border-bottom: 1px solid #ccc;">Number of Distributed IDS/IPS & Malware Prevention Policies:</td>
             <td style="padding: 10px; border-bottom: 1px solid #ccc; text-align: right;"><b>$($report_counts[0])</b></td>
         </tr>
         <tr>
-            <td style="padding: 10px; border-bottom: 1px solid #ccc;">Number of Distributed IDS/IPS Rules:</td>
+            <td style="padding: 10px; border-bottom: 1px solid #ccc;">Number of Distributed IDS/IPS & Malware Prevention Rules:</td>
             <td style="padding: 10px; border-bottom: 1px solid #ccc; text-align: right;"><b>$($report_counts[1])</b></td>
         </tr>
         <tr>
@@ -435,7 +318,7 @@ function Generate-Full-Report {
         </tr>
     </table>
 	<p>&nbsp;</p>
-	<p style="text-align:center;"><span style="font-size:18px;"><strong><u>IDS/IPS Policies</u></strong></span></p>
+	<p style="text-align:center;"><span style="font-size:18px;"><strong><u>IDS/IPS & Malware Prevention Policies</u></strong></span></p>
 	<table>
 		<thead>
 			<tr>
@@ -445,6 +328,7 @@ function Generate-Full-Report {
 				<th>Destination Groups</th>
 				<th>Services</th>
 				<th>Security Profiles</th>
+				<th>Applied To</th>
 				<th>Action</th>
 			</tr>
 		</thead>
@@ -577,7 +461,7 @@ $Cred = New-Object -TypeName System.Management.Automation.PSCredential -Argument
 # SvcUri will gather all services under infra
 
 
-$Uri = 'https://'+$nsxmgr+'/policy/api/v1/infra?type_filter=IdsSecurityPolicy;Group;IdsProfile;'
+$Uri = 'https://'+$nsxmgr+'/policy/api/v1/infra?type_filter=IdsSecurityPolicy;Group;IdsProfile;MalwarePreventionProfile;'
 $SvcUri = 'https://'+$nsxmgr+'/policy/api/v1/infra?type_filter=Service;'
 
 
@@ -589,17 +473,18 @@ $allIdsPolicies = $allpolicies.AllIDSPolicies
 $allGroups = $allpolicies.AllGroups
 $allServices = $allpolicies.AllServices
 $allIdsProfiles = $allpolicies.AllIDSProfiles
+$allMalwareProfiles = $allpolicies.AllMalwareProfiles
 
 
 
-$html_policy = Generate_Policy_Report
+$html_policy = Invoke-GeneratePolicyReport
 
-$html_ids_profile = Generate_IDS_Profile_Report
+$html_ids_profile = Invoke-GenerateIDSProfileReport
 
-$report_counts = Generate_Breakdown_Report
+$report_counts = Invoke-GenerateBreakdownReport
 
 
-Generate-Full-Report
+Invoke-GenerateFullReport
 
 
 
