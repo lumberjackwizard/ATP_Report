@@ -108,13 +108,13 @@ function Invoke-GeneratePolicyReport {
 	
     	$rowStyle = ''
     	if ($idsPolicy.category -eq "ThreatRules") {
-			$rowStyle = ' style="background-color: #4682B4; "' 
+			$rowStyle = ' style="background-color: #C0C0C0; "' 
 		} 
     
     # Add the row to the HTML
 		$html_policy += "    <tr$rowStyle>
-			<td style='font-weight: bold;'>$($idsPolicy.display_name)</td>
-			<td colspan=7></td>
+			<td colspan='8' style='font-weight: bold;'>$($idsPolicy.display_name)</td>
+			
 		</tr>`n"
 
 		
@@ -185,10 +185,13 @@ function Invoke-GeneratePolicyReport {
 			
 			foreach ($IdsProfile in $rule.ids_profiles){  
 				$n = 0
+				$idsColor = 0
+				$malwareColor = 0
 				foreach ($filIdsPro in $allIdsProfiles){
 					if ($filIdsPro.path -eq $IdsProfile){
 						$ruleentryidspro += $filIdsPro.display_name + "`n"
 						$n = 1
+						$idsColor = 1
 						break
 					}					
 				}
@@ -197,6 +200,7 @@ function Invoke-GeneratePolicyReport {
 					if ($filMalwarePro.path -eq $IdsProfile){
 						$ruleentryidspro += $filMalwarePro.display_name + "`n"
 						$n = 1
+						$malwareColor = 1
 						break
 					}					
 				}
@@ -224,18 +228,30 @@ function Invoke-GeneratePolicyReport {
 				
 			$rowCount++
 			
-			# Add the row to the HTML
-			if ($rowCount % 2) {
-				$rowStyle2 = ' style="background-color: #B0C4DE;"'
-			} else { 
-				$rowStyle2 = ' style="background-color: #949BAF;"'
+			
+			if ($idsColor -eq "1"){
+				# Alternate colors between rows in the same policy
+				if ($rowCount % 2) {
+					$rowStyle2 = ' style="background-color: #B0C4DE;"'
+				} else { 
+					$rowStyle2 = ' style="background-color: #9FB2D0;"'
+				}
+			}
+
+			if ($malwareColor -eq "1"){
+				# Alternate colors between rows in the same policy
+				if ($rowCount % 2) {
+					$rowStyle2 = ' style="background-color: #77BE77;"'
+				} else { 
+					$rowStyle2 = ' style="background-color: #7BA57B;"'
+				}
 			}
 
 			# Adding logic to alter the colors of the first two columns depending on the policy category
 
 	
 			if ($idsPolicy.category -eq "ThreatRules") {
-				$nullStyle = ' style="background-color: #6FA3D1; border-bottom: none; border-top: none;"></td' 
+				$nullStyle = ' style="background-color: #A9A9A9; border-bottom: none; border-top: none;"></td' 
 			}
 	
 
@@ -305,11 +321,11 @@ function Invoke-GenerateFullReport {
     <p>&nbsp;</p>
     <table style="width: 60%; margin: 0 auto; border-collapse: collapse; font-size: 16px;">
         <tr>
-            <td style="padding: 10px; border-bottom: 1px solid #ccc;">Number of Distributed IDS/IPS & Malware Prevention Policies:</td>
+            <td style="padding: 10px; border-bottom: 1px solid #ccc;">Number of User Created Distributed IDS/IPS & Malware Prevention Policies:</td>
             <td style="padding: 10px; border-bottom: 1px solid #ccc; text-align: right;"><b>$($report_counts[0])</b></td>
         </tr>
         <tr>
-            <td style="padding: 10px; border-bottom: 1px solid #ccc;">Number of Distributed IDS/IPS & Malware Prevention Rules:</td>
+            <td style="padding: 10px; border-bottom: 1px solid #ccc;">Number of User Created Distributed IDS/IPS & Malware Prevention Rules:</td>
             <td style="padding: 10px; border-bottom: 1px solid #ccc; text-align: right;"><b>$($report_counts[1])</b></td>
         </tr>
         <tr>
@@ -319,10 +335,36 @@ function Invoke-GenerateFullReport {
     </table>
 	<p>&nbsp;</p>
 	<p style="text-align:center;"><span style="font-size:18px;"><strong><u>IDS/IPS & Malware Prevention Policies</u></strong></span></p>
+	<table style="width: 200px; margin: 0 auto; border: 1px solid #ccc; height: 100px;">
+		<thead>
+			<tr>
+				<th colspan="2" style="text-align: center; padding: 10px;">
+					Key
+				</th>
+			</tr>
+		</thead>
+		<tbody>
+			<tr>
+				<td style="width: 50px; padding: 10px;">
+					<div style="background-color: #FF0000; width: 25%; height: 20px; display: inline-block;"></div>
+					<div style="background-color: #00FF00; width: 25%; height: 20px; display: inline-block;"></div>
+				</td>
+				<td style="padding: 10px;">IDS/IPS Rule</td>
+			</tr>
+			<tr>
+				<td style="width: 50px; padding: 10px;">
+					<div style="background-color: #FF0000; width: 50%; height: 20px; display: inline-block;"></div>
+					<div style="background-color: #00FF00; width: 50%; height: 20px; display: inline-block;"></div>
+				</td>
+				<td style="padding: 10px;">Malware Rule</td>
+			</tr>
+		</tbody>
+	</table>
+	<p>&nbsp;</p>
 	<table>
 		<thead>
 			<tr>
-				<th>IDS/IPS Policy Name</th>
+				<th>Policy Name</th>
 				<th>Rule Name</th>
 				<th>Source Groups</th>
 				<th>Destination Groups</th>
